@@ -16,7 +16,10 @@ check "no definitions staged" bash -c "! test -f /usr/local/share/claude-feature
 check "bootstrap still installed" test -x /usr/local/share/claude-feature/bootstrap.sh
 check "bootstrap exits cleanly with nothing staged" /usr/local/share/claude-feature/bootstrap.sh
 
-# jq is pulled in only to drive the MCP bootstrap, so it should not be here.
-check "jq not installed when unused" bash -c "! command -v jq"
+# There is deliberately no "jq must be absent" assertion. jq is installed here
+# only to drive the MCP bootstrap, but plenty of base images ship it already, so
+# asserting its absence tests the base image rather than this feature. What the
+# options actually promise — nothing staged, no managed settings, bootstrap still
+# exits clean — is covered above.
 
 reportResults

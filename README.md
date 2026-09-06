@@ -118,3 +118,14 @@ PR with the docs. Two repository settings are required:
 - Each GHCR package defaults to **private**; mark it public at
   `https://github.com/users/The-Mats/packages/container/devcontainer-features%2F<feature>/settings`.
 
+### Testing
+
+> [!NOTE]
+> **Run `devcontainer features test` in CI, not on a machine you actually work on.**
+> The harness builds containers with the feature applied — mount included — so they
+> attach the real `claude-config` volume. That means test runs write into your everyday
+> Claude config (`bootstrap.sh` adds MCP servers to it), and scenarios share state with
+> each other rather than starting clean. Feature `mounts` take no substitution beyond
+> `${devcontainerId}`, so there is no test-only volume name; rename it in
+> `src/claude/devcontainer-feature.json` first if you must run the suite locally.
+
