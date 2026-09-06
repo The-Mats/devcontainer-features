@@ -56,10 +56,11 @@ not. Use a fine-grained PAT with the narrowest scopes you need.
 
 ### 3. Secrets, in one place, outside every repository
 
-Every `${VAR}` reference resolves from `$CLAUDE_CONFIG_DIR/secrets.env` — a file in
-the volume, mode `600`, that no repository knows about:
+Every `${VAR}` reference resolves from `$CLAUDE_CONFIG_DIR/secrets.env` — a file in the
+volume, mode `600`, that no repository knows about:
 
 ```
+GITHUB_PERSONAL_ACCESS_TOKEN=...
 WANDB_API_KEY=...
 ZOTERO_API_KEY=...
 ZOTERO_LIBRARY_ID=...
