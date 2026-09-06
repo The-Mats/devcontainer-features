@@ -13,7 +13,7 @@ API keys — live in **one place**, rather than as edits scattered across every
 repository where multiple users work. Nothing here requires changing a project's
 `devcontainer.json`!
 
-Pairs well with my [dotfile](https://github.com/The-Mats/dotfiles) for `zsh`!
+Pairs well with my [dotfiles](https://github.com/The-Mats/dotfiles) for `zsh`!
 
 
 > [!IMPORTANT]
@@ -54,13 +54,21 @@ The volume starts empty, so two one-time steps inside the container:
 
 ```shell
 claude login                              # Claude Code itself
+```
 
-cat > "$CLAUDE_CONFIG_DIR/secrets.env" <<'EOF'
-GITHUB_PERSONAL_ACCESS_TOKEN=...
+Write the keys straight into `$CLAUDE_CONFIG_DIR/secrets.env`
+(`/home/vscode/.claude/secrets.env`) with an editor. One `KEY=value` per line:
+
+```ini
+GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_...
 WANDB_API_KEY=...
 ZOTERO_API_KEY=...
 ZOTERO_LIBRARY_ID=...
-EOF
+```
+
+Then, in the container:
+
+```shell
 chmod 600 "$CLAUDE_CONFIG_DIR/secrets.env"
 /usr/local/share/claude-feature/bootstrap.sh    # or just rebuild
 ```

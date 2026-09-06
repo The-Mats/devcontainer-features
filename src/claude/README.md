@@ -46,14 +46,17 @@ project. Swap it for `${devcontainerId}` if you would rather each project be sep
 container create. A server that already exists is left alone, so the bootstrap is safe
 on every rebuild and safe against an existing volume.
 
-`github` carries **no credential at all** — GitHub's MCP server supports OAuth, so one
-`claude mcp login github --no-browser` replaces a long-lived personal access token
-with a short-lived, revocable one stored in the volume's credential file. `wandb` and
-`zotero` have no OAuth support yet and reference `${VAR}` instead.
+All three authenticate with a `${VAR}` reference. OAuth is not an option for any of
+them today: `api.githubcopilot.com/mcp/` does not support dynamic client registration,
+which `claude mcp login` requires, so that flow fails with *"Incompatible auth server"*
+([claude-code#3433](https://github.com/anthropics/claude-code/issues/3433),
+[#3273](https://github.com/anthropics/claude-code/issues/3273)). GitHub's server does
+speak OAuth, but only to clients with a pre-registered client ID, which Claude Code is
+not. Use a fine-grained PAT with the narrowest scopes you need.
 
 ### 3. Secrets, in one place, outside every repository
 
-The two `${VAR}` references resolve from `$CLAUDE_CONFIG_DIR/secrets.env` — a file in
+Every `${VAR}` reference resolves from `$CLAUDE_CONFIG_DIR/secrets.env` — a file in
 the volume, mode `600`, that no repository knows about:
 
 ```
@@ -105,16 +108,26 @@ minimum-scope tokens and rotation.
 
 ## Setting it up
 
-```shell
-# once per machine, inside the container
-printf 'WANDB_API_KEY=...\nZOTERO_API_KEY=...\nZOTERO_LIBRARY_ID=...\n' > "$CLAUDE_CONFIG_DIR/secrets.env"
-chmod 600 "$CLAUDE_CONFIG_DIR/secrets.env"
-claude mcp login github --no-browser     # no key for this one
+Write the keys straight into `$CLAUDE_CONFIG_DIR/secrets.env`
+(`/home/vscode/.claude/secrets.env`) with an editor — not with a shell heredoc, which
+would store every value in `~/.zsh_history`. One `KEY=value` per line:
+
+```ini
+GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_...
+WANDB_API_KEY=...
+ZOTERO_API_KEY=...
+ZOTERO_LIBRARY_ID=...
 ```
 
-Then rebuild, or re-run `/usr/local/share/claude-feature/bootstrap.sh` to pick the
-file up immediately. On a genuinely new machine the volume starts empty, so also
-`claude login` once.
+Then, in the container:
+
+```shell
+chmod 600 "$CLAUDE_CONFIG_DIR/secrets.env"
+/usr/local/share/claude-feature/bootstrap.sh   # regenerate the env block
+```
+
+Editing `secrets.env` later needs that same last step — or a rebuild — to pick it up.
+On a genuinely new machine the volume starts empty, so also `claude login` once.
 
 ## Assumptions
 

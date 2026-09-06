@@ -88,21 +88,26 @@ minimum-scope tokens and rotation.
 
 ## Setting it up
 
-```shell
-# once per machine, inside the container
-cat > "$CLAUDE_CONFIG_DIR/secrets.env" <<'EOF'
-GITHUB_PERSONAL_ACCESS_TOKEN=...
+Write the keys straight into `$CLAUDE_CONFIG_DIR/secrets.env`
+(`/home/vscode/.claude/secrets.env`) with an editor — not with a shell heredoc, which
+would store every value in `~/.zsh_history`. One `KEY=value` per line:
+
+```ini
+GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_...
 WANDB_API_KEY=...
 ZOTERO_API_KEY=...
 ZOTERO_LIBRARY_ID=...
-EOF
+```
+
+Then, in the container:
+
+```shell
 chmod 600 "$CLAUDE_CONFIG_DIR/secrets.env"
 /usr/local/share/claude-feature/bootstrap.sh   # regenerate the env block
 ```
 
-Then rebuild, or re-run `/usr/local/share/claude-feature/bootstrap.sh` to pick the
-file up immediately. On a genuinely new machine the volume starts empty, so also
-`claude login` once.
+Editing `secrets.env` later needs that same last step — or a rebuild — to pick it up.
+On a genuinely new machine the volume starts empty, so also `claude login` once.
 
 ## Assumptions
 
