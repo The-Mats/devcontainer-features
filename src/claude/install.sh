@@ -38,7 +38,7 @@ echo "  prepared $CONFIG_DIR (owner: $REMOTE_USER)"
 #
 # settings.json and .credentials.json are named explicitly because neither
 # matches *secret*, and both end up holding credentials — the first from the env
-# block bootstrap.sh generates, the second from `claude mcp login`.
+# block bootstrap.sh generates, the second from `claude login`.
 #
 # `printenv*` is a speed bump against the reflex to dump the environment, not a
 # control: `echo $VAR`, `set` and /proc/self/environ all sail past it. It is here

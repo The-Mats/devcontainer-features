@@ -76,14 +76,12 @@ while read -r name; do
     fi
 done < <(jq -r '.mcpServers | keys[]' "$DEFS")
 
-# Servers that authenticate by OAuth carry no credential and need one
-# interactive login, whose token then lives in the volume like everything else.
-for name in $(jq -r '._oauth // [] | .[]' "$DEFS"); do
-    case " $newly_added " in
-        *" $name "*)
-            echo
-            echo "  '$name' uses OAuth — no API key needed. Authenticate once with:"
-            echo "      claude mcp login $name --no-browser"
-            ;;
-    esac
-done
+# Every server here authenticates with a ${VAR} from secrets.env; none uses OAuth.
+# `claude mcp login` does not work against api.githubcopilot.com/mcp/, which has no
+# dynamic client registration — see the note in mcp-servers.json.
+if [ -n "$newly_added" ] && [ ! -r "$SECRETS" ]; then
+    echo
+    echo "  Added:$newly_added — but no $SECRETS exists yet, so their"
+    echo "  \${VAR} references resolve to nothing and the servers will fail to"
+    echo "  connect. Create it (KEY=value per line, chmod 600) and re-run this script."
+fi

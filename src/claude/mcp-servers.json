@@ -1,9 +1,13 @@
 {
-    "_comment": "Replayed into user scope by bootstrap.sh. github carries no credential at all — it authenticates with OAuth via `claude mcp login github`. The other two have no OAuth support yet, so they reference ${VAR}, resolved from the env block bootstrap.sh generates out of secrets.env. No key is ever committed here.",
+    "_comment": "Replayed into user scope by bootstrap.sh via `claude mcp add-json -s user`. Every credential is a ${VAR} reference resolved from the env block bootstrap.sh generates out of secrets.env, so no key is ever committed here.",
+    "_note_github_oauth": "github uses a PAT rather than OAuth on purpose. api.githubcopilot.com/mcp/ does not support dynamic client registration, and Claude Code's `claude mcp login` requires it, so the flow fails with 'Incompatible auth server'. See anthropics/claude-code#3433 and #3273. Use a fine-grained token with the narrowest scopes you need.",
     "mcpServers": {
         "github": {
             "type": "http",
-            "url": "https://api.githubcopilot.com/mcp/"
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+                "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+            }
         },
         "wandb": {
             "type": "http",
@@ -26,8 +30,5 @@
                 "ZOTERO_LIBRARY_TYPE": "user"
             }
         }
-    },
-    "_oauth": [
-        "github"
-    ]
+    }
 }

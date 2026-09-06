@@ -50,14 +50,17 @@ Per-project use works too, if you want them declared explicitly:
 
 ### First run on a new machine
 
-The volume starts empty, so three one-time steps inside the container:
+The volume starts empty, so two one-time steps inside the container:
 
 ```shell
 claude login                              # Claude Code itself
-claude mcp login github --no-browser      # OAuth; no API key to paste
 
-printf 'WANDB_API_KEY=...\nZOTERO_API_KEY=...\nZOTERO_LIBRARY_ID=...\n' \
-    > "$CLAUDE_CONFIG_DIR/secrets.env"
+cat > "$CLAUDE_CONFIG_DIR/secrets.env" <<'EOF'
+GITHUB_PERSONAL_ACCESS_TOKEN=...
+WANDB_API_KEY=...
+ZOTERO_API_KEY=...
+ZOTERO_LIBRARY_ID=...
+EOF
 chmod 600 "$CLAUDE_CONFIG_DIR/secrets.env"
 /usr/local/share/claude-feature/bootstrap.sh    # or just rebuild
 ```
@@ -90,8 +93,7 @@ you between projects.
 | auth, MCP servers, skills, chat history | volume `claude-config` → `/home/vscode/.claude` | `mounts` + `CLAUDE_CONFIG_DIR` |
 | per-project chat history | `~/.claude/projects/-workspaces-<repo>/` | keyed by container path, so projects stay separate |
 | MCP servers | user scope | `bootstrap.sh` replays `mcp-servers.json` on create |
-| GitHub credentials | the volume's credential store | OAuth — **no API key**, one `claude mcp login github` |
-| W&B / Zotero keys | `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600` | in the volume, referenced as `${VAR}` |
+| GitHub / W&B / Zotero keys | `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600` | in the volume, referenced as `${VAR}` |
 | …reaching Claude and MCP | `env` block of `settings.json` | generated from `secrets.env` by `bootstrap.sh` |
 | …reaching plain terminals | `/etc/profile.d/10-claude-secrets.sh` | exports an **allowlist** (`shellVars`, default `WANDB_API_KEY`) from the same file; also hooked into `bash.bashrc` / `zshrc` |
 | deny rules for credential files | `/etc/claude-code/managed-settings.json` | managed tier — no project can weaken them |
@@ -101,8 +103,8 @@ you between projects.
 > [!WARNING]
 >Key safety
 >
->- `github` needs no key at all — it authenticates by OAuth, and the token is short-lived and revocable.
-> - The two that still need keys live only in `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600`, inside the volume.
+>- All keys live only in `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600`, inside the volume. Never in a repository, never in git.
+> - OAuth is not available for any of these. `api.githubcopilot.com/mcp/` has no dynamic client registration, which `claude mcp login` requires, so use a **fine-grained PAT with an expiry** and only the repos Claude needs.
 > - Deny rules stop Claude's *file tools* from opening credential files. They do **not** remove values from the process environment, where any subprocess can read them.
 > - So the things that actually matter: minimum-scope tokens, and rotate anything that has been printed.
 

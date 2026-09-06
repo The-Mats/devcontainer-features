@@ -58,17 +58,17 @@ rm -f /home/vscode/.claude/secrets.env
 check "bootstrap is executable" test -x /usr/local/share/claude-feature/bootstrap.sh
 check "definitions staged" test -f /usr/local/share/claude-feature/mcp-servers.json
 check "definitions are valid JSON" bash -c "jq -e '.mcpServers' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
-# github authenticates by OAuth, so it must ship without any credential header.
-check "github carries no Authorization header" bash -c \
-    "jq -e '.mcpServers.github | has(\"headers\") | not' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
-check "github listed as an OAuth server" bash -c \
-    "jq -e '._oauth | index(\"github\")' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
-check "no literal keys committed" bash -c \
-    "! grep -qE '(sk-|ghp_|github_pat_|wandb_v1_)' /usr/local/share/claude-feature/mcp-servers.json"
+# github uses a PAT, not OAuth: api.githubcopilot.com/mcp/ has no dynamic client
+# registration, which `claude mcp login` requires. Every server must therefore
+# carry a ${VAR} reference and never a literal.
+check "github credential is a \${VAR} reference" bash -c \
+    "jq -e '.mcpServers.github.headers.Authorization == \"Bearer \${GITHUB_PERSONAL_ACCESS_TOKEN}\"' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
 check "wandb credential is a \${VAR} reference" bash -c \
     "jq -e '.mcpServers.wandb.headers.Authorization == \"Bearer \${WANDB_API_KEY}\"' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
 check "zotero credential is a \${VAR} reference" bash -c \
     "jq -e '.mcpServers.zotero.env.ZOTERO_API_KEY == \"\${ZOTERO_API_KEY}\"' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
+check "no literal keys committed" bash -c \
+    "! grep -qE '(sk-|ghp_|github_pat_|wandb_v1_)' /usr/local/share/claude-feature/mcp-servers.json"
 
 # --- bootstrap behaviour ------------------------------------------------------
 # No secrets.env and no claude CLI in the test image: it must still exit 0.
