@@ -1,0 +1,40 @@
+{
+    "name": "Claude Code workspace",
+    "id": "claude",
+    "version": "1.0.0",
+    "description": "Persists Claude Code's state in a named volume so auth, MCP servers and per-project chat history survive a rebuild, replays a versioned set of MCP servers into user scope, and installs machine-wide deny rules that keep the agent out of secret files.",
+    "options": {
+        "mcpServers": {
+            "type": "boolean",
+            "default": true,
+            "description": "On container create, replay the MCP server definitions bundled with this feature into user scope. Existing servers of the same name are left untouched."
+        },
+        "denyRules": {
+            "type": "boolean",
+            "default": true,
+            "description": "Install /etc/claude-code/managed-settings.json with deny rules for secret files. Managed settings sit above user and project settings, so no repository can weaken them."
+        },
+        "shellVars": {
+            "type": "string",
+            "default": "WANDB_API_KEY",
+            "description": "Comma- or space-separated names from secrets.env to export into interactive shells — only those a command you type actually needs, such as WANDB_API_KEY for `wandb sync` and training runs. Everything else in the file still reaches Claude Code and its MCP servers through the env block of settings.json, and is deliberately kept out of every shell's environment. Empty exports nothing."
+        }
+    },
+    "mounts": [
+        {
+            "source": "claude-config",
+            "target": "/home/vscode/.claude",
+            "type": "volume"
+        }
+    ],
+    "containerEnv": {
+        "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+    },
+    "postCreateCommand": "/usr/local/share/claude-feature/bootstrap.sh",
+    "dependsOn": {
+        "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}

@@ -1,0 +1,18 @@
+{
+    "extra_packages": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "workbench": {
+                "packages": "jq,tmux"
+            }
+        }
+    },
+    "no_extra_packages": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "workbench": {
+                "packages": ""
+            }
+        }
+    }
+}

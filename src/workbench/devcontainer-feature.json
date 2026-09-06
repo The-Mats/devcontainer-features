@@ -1,0 +1,27 @@
+{
+    "name": "Workbench",
+    "id": "workbench",
+    "version": "1.0.0",
+    "description": "Terminal tooling and editor wiring for every dev container: ripgrep, zsh, nvtop, and the todo-tree extension pointed at ripgrep.",
+    "options": {
+        "packages": {
+            "type": "string",
+            "default": "nvtop",
+            "description": "Extra apt packages, comma- or space-separated. Each is installed best-effort: one that is missing from the base image's repositories is reported and skipped rather than failing the build. ripgrep and zsh are always installed because the VS Code settings below depend on them."
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "gruntfuggly.todo-tree"
+            ],
+            "settings": {
+                "todo-tree.ripgrep.ripgrep": "/usr/bin/rg",
+                "terminal.integrated.defaultProfile.linux": "zsh"
+            }
+        }
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}

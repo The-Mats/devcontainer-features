@@ -1,0 +1,104 @@
+#!/bin/bash
+set -e
+source dev-container-features-test-lib
+
+# --- volume mount point -------------------------------------------------------
+# Created by install.sh before the volume attaches, so a fresh volume inherits
+# this ownership instead of coming up root-owned.
+check "config dir exists" test -d /home/vscode/.claude
+check "CLAUDE_CONFIG_DIR points at it" bash -c '[ "$CLAUDE_CONFIG_DIR" = "/home/vscode/.claude" ]'
+
+# --- managed deny rules (default: on) ----------------------------------------
+check "managed settings installed" test -f /etc/claude-code/managed-settings.json
+check "managed settings are valid JSON" bash -c "jq -e . /etc/claude-code/managed-settings.json > /dev/null"
+# Only the Read rules are paths; a relative one in a non-project settings file
+# resolves against that file's directory and would match nothing.
+check "every Read deny path is absolute" bash -c \
+    "jq -e '.permissions.deny | map(select(startswith(\"Read(\"))) | all(startswith(\"Read(//\"))' /etc/claude-code/managed-settings.json > /dev/null"
+check "printenv denied" bash -c \
+    "jq -e '.permissions.deny | any(startswith(\"Bash(printenv\"))' /etc/claude-code/managed-settings.json > /dev/null"
+# env* would also match envsubst and envdir, so it is deliberately not here.
+check "env not blanket-denied" bash -c \
+    "jq -e '.permissions.deny | any(. == \"Bash(env*)\") | not' /etc/claude-code/managed-settings.json > /dev/null"
+# Neither of these matches *secret*, and both hold credentials, so they must be
+# denied by name or they are not covered at all.
+check "settings.json denied by name" bash -c \
+    "jq -e '.permissions.deny | any(contains(\"settings.json\"))' /etc/claude-code/managed-settings.json > /dev/null"
+check "credentials denied by name" bash -c \
+    "jq -e '.permissions.deny | any(contains(\".credentials.json\"))' /etc/claude-code/managed-settings.json > /dev/null"
+
+# --- secrets on the shell PATH -----------------------------------------------
+check "profile snippet installed" test -f /etc/profile.d/10-claude-secrets.sh
+check "profile snippet is valid shell" bash -n /etc/profile.d/10-claude-secrets.sh
+check "profile snippet tolerates a missing secrets file" bash -c \
+    ". /etc/profile.d/10-claude-secrets.sh"
+check "interactive non-login shells hooked" bash -c \
+    "grep -q 10-claude-secrets /etc/bash.bashrc"
+# zsh may be installed later — by the workbench feature ordered after this one,
+# or by a dotfiles script at container create — so the hook must already be in
+# place. For a zsh terminal this is the hook that works; profile.d is login-only.
+check "zsh rc hooked even if zsh is not installed yet" bash -c \
+    "grep -q 10-claude-secrets /etc/zsh/zshrc"
+
+# The shell gets an allowlist, not the whole file: only what a typed command
+# needs. Asserted by set/unset, never by printing a value.
+printf 'WANDB_API_KEY=fixture-wandb\nZOTERO_API_KEY=fixture-zotero\n' \
+    > /home/vscode/.claude/secrets.env
+chmod 600 /home/vscode/.claude/secrets.env
+check "allowlisted var is exported" bash -c \
+    'v=$(env -i PATH=$PATH sh -c ". /etc/profile.d/10-claude-secrets.sh; echo \${WANDB_API_KEY-unset}"); [ "$v" = fixture-wandb ]'
+check "non-allowlisted var is NOT exported" bash -c \
+    'v=$(env -i PATH=$PATH sh -c ". /etc/profile.d/10-claude-secrets.sh; echo \${ZOTERO_API_KEY-unset}"); [ "$v" = unset ]'
+# Any output here breaks powerlevel10k's instant prompt.
+check "sourcing the snippet is silent" bash -c \
+    '[ -z "$(env -i PATH=$PATH sh -c ". /etc/profile.d/10-claude-secrets.sh" 2>&1)" ]'
+rm -f /home/vscode/.claude/secrets.env
+
+# --- MCP definitions (default: on) -------------------------------------------
+check "bootstrap is executable" test -x /usr/local/share/claude-feature/bootstrap.sh
+check "definitions staged" test -f /usr/local/share/claude-feature/mcp-servers.json
+check "definitions are valid JSON" bash -c "jq -e '.mcpServers' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
+# github authenticates by OAuth, so it must ship without any credential header.
+check "github carries no Authorization header" bash -c \
+    "jq -e '.mcpServers.github | has(\"headers\") | not' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
+check "github listed as an OAuth server" bash -c \
+    "jq -e '._oauth | index(\"github\")' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
+check "no literal keys committed" bash -c \
+    "! grep -qE '(sk-|ghp_|github_pat_|wandb_v1_)' /usr/local/share/claude-feature/mcp-servers.json"
+check "wandb credential is a \${VAR} reference" bash -c \
+    "jq -e '.mcpServers.wandb.headers.Authorization == \"Bearer \${WANDB_API_KEY}\"' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
+check "zotero credential is a \${VAR} reference" bash -c \
+    "jq -e '.mcpServers.zotero.env.ZOTERO_API_KEY == \"\${ZOTERO_API_KEY}\"' /usr/local/share/claude-feature/mcp-servers.json > /dev/null"
+
+# --- bootstrap behaviour ------------------------------------------------------
+# No secrets.env and no claude CLI in the test image: it must still exit 0.
+check "bootstrap exits cleanly with no secrets file" /usr/local/share/claude-feature/bootstrap.sh
+check "bootstrap did not invent a settings.json" bash -c \
+    "! test -f /home/vscode/.claude/settings.json"
+
+# Now with a secrets file, the env block must be generated from it.
+printf '# a comment\n\nWANDB_API_KEY=abc123\nZOTERO_LIBRARY_ID=42\n' > /home/vscode/.claude/secrets.env
+chmod 600 /home/vscode/.claude/secrets.env
+CLAUDE_CONFIG_DIR=/home/vscode/.claude /usr/local/share/claude-feature/bootstrap.sh
+check "env block generated" bash -c \
+    "jq -e '.env.WANDB_API_KEY == \"abc123\" and .env.ZOTERO_LIBRARY_ID == \"42\"' /home/vscode/.claude/settings.json > /dev/null"
+check "comments and blank lines skipped" bash -c \
+    "jq -e '.env | length == 2' /home/vscode/.claude/settings.json > /dev/null"
+check "generated settings are mode 600" bash -c \
+    "[ \"\$(stat -c '%a' /home/vscode/.claude/settings.json)\" = 600 ]"
+
+# Re-running must merge, not clobber, whatever else lives in settings.json.
+jq '. + {model: "opus"}' /home/vscode/.claude/settings.json > /tmp/s && mv /tmp/s /home/vscode/.claude/settings.json
+CLAUDE_CONFIG_DIR=/home/vscode/.claude /usr/local/share/claude-feature/bootstrap.sh
+check "existing settings keys preserved" bash -c \
+    "jq -e '.model == \"opus\" and .env.WANDB_API_KEY == \"abc123\"' /home/vscode/.claude/settings.json > /dev/null"
+
+# The CLI arrives via dependsOn; report rather than fail, so a registry hiccup
+# fetching that feature does not read as a bug in this one.
+if command -v claude > /dev/null 2>&1; then
+    echo "note: claude CLI present"
+else
+    echo "note: claude CLI absent — dependsOn feature did not resolve"
+fi
+
+reportResults

@@ -1,0 +1,28 @@
+{
+    "everything_off": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "claude": {
+                "mcpServers": false,
+                "denyRules": false
+            }
+        }
+    },
+    "with_workbench": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "claude": {},
+            "workbench": {
+                "packages": "jq"
+            }
+        }
+    },
+    "shell_allowlist_widened": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "claude": {
+                "shellVars": "WANDB_API_KEY,EXTRA_TOKEN"
+            }
+        }
+    }
+}

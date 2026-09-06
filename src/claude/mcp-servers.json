@@ -1,0 +1,33 @@
+{
+    "_comment": "Replayed into user scope by bootstrap.sh. github carries no credential at all — it authenticates with OAuth via `claude mcp login github`. The other two have no OAuth support yet, so they reference ${VAR}, resolved from the env block bootstrap.sh generates out of secrets.env. No key is ever committed here.",
+    "mcpServers": {
+        "github": {
+            "type": "http",
+            "url": "https://api.githubcopilot.com/mcp/"
+        },
+        "wandb": {
+            "type": "http",
+            "url": "https://mcp.withwandb.com/mcp",
+            "headers": {
+                "Authorization": "Bearer ${WANDB_API_KEY}"
+            }
+        },
+        "zotero": {
+            "command": "uvx",
+            "args": [
+                "--from",
+                "git+https://github.com/54yyyu/zotero-mcp.git",
+                "zotero-mcp"
+            ],
+            "env": {
+                "ZOTERO_LOCAL": "false",
+                "ZOTERO_API_KEY": "${ZOTERO_API_KEY}",
+                "ZOTERO_LIBRARY_ID": "${ZOTERO_LIBRARY_ID}",
+                "ZOTERO_LIBRARY_TYPE": "user"
+            }
+        }
+    },
+    "_oauth": [
+        "github"
+    ]
+}
