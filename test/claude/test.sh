@@ -73,8 +73,11 @@ check "zotero credential is a \${VAR} reference" bash -c \
 # --- bootstrap behaviour ------------------------------------------------------
 # No secrets.env and no claude CLI in the test image: it must still exit 0.
 check "bootstrap exits cleanly with no secrets file" /usr/local/share/claude-feature/bootstrap.sh
-check "bootstrap did not invent a settings.json" bash -c \
-    "! test -f /home/vscode/.claude/settings.json"
+# Not "settings.json must not exist": the claude CLI arrives via dependsOn and may
+# write into the config dir itself. What matters is that bootstrap invented no env
+# block when there was no secrets.env to build one from.
+check "no env block without a secrets file" bash -c \
+    "! test -f /home/vscode/.claude/settings.json || jq -e '(.env // {}) | length == 0' /home/vscode/.claude/settings.json > /dev/null"
 
 # Now with a secrets file, the env block must be generated from it.
 printf '# a comment\n\nWANDB_API_KEY=abc123\nZOTERO_LIBRARY_ID=42\n' > /home/vscode/.claude/secrets.env

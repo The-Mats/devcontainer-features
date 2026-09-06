@@ -103,6 +103,12 @@ the mount target cannot be derived from `$_REMOTE_USER_HOME`. A different home i
 warned about at build time and still works, because `CLAUDE_CONFIG_DIR` is what Claude
 Code actually reads.
 
+`dependsOn` pulls in `ghcr.io/devcontainers/features/node` as well as the official
+`claude-code` feature. Node is not optional padding: on Debian 13 the distro `nodejs`
+package ships **without** `npm`, so `claude-code`'s own installer gets Node, fails its
+`npm` check, and aborts the whole build. The node feature supplies both, and
+`claude-code` already declares `installsAfter` node, so the ordering resolves itself.
+
 ## Example
 
 ```jsonc
