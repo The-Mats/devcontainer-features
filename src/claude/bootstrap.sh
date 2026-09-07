@@ -67,8 +67,12 @@ USER_CONFIG="$CONFIG_DIR/.claude.json"
 BACKUP_DIR="$CONFIG_DIR/mcp-backups"
 
 # Staged by install.sh, which is where Feature options are visible; postCreate
-# runs with none of them in its environment.
+# runs with none of them in its environment. An explicit RECONCILE_MCP in the
+# environment still wins, so a manual run can override the build-time choice
+# without writing to a root-owned file.
+_reconcile_override="${RECONCILE_MCP:-}"
 [ -r "$RECONCILE_CONF" ] && . "$RECONCILE_CONF"
+[ -n "$_reconcile_override" ] && RECONCILE_MCP="$_reconcile_override"
 
 echo "Bootstrapping MCP servers at user scope"
 newly_added=""

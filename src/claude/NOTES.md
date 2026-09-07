@@ -24,7 +24,9 @@ project. Swap it for `${devcontainerId}` if you would rather each project be sep
 `mcp-servers.json` ships with the feature and is reconciled into **user** scope on
 container create. A missing server is added; a server whose live entry no longer matches
 the bundled definition is replaced, with the old entry saved under
-`$CLAUDE_CONFIG_DIR/mcp-backups/`.
+`$CLAUDE_CONFIG_DIR/mcp-backups/`. `reconcileMcp` is a build-time option, staged as
+`bootstrap.env`; `RECONCILE_MCP=false /usr/local/share/claude-feature/bootstrap.sh`
+overrides it for one manual run without touching that root-owned file.
 
 All three authenticate with a `${VAR}` reference. OAuth is not an option for any of
 them today: `api.githubcopilot.com/mcp/` does not support dynamic client registration,

@@ -124,7 +124,10 @@ chmod +x "$STUB/claude"
 # above are about the real one.
 T=/tmp/reconcile-home
 rm -rf "$T"; mkdir -p "$T"
-run_bootstrap() { PATH="$STUB:$PATH" CLAUDE_CONFIG_DIR="$T" \
+# Extra VAR=value pairs are passed straight through, so a case can override the
+# staged option without writing to the root-owned bootstrap.env: these tests run
+# as the remote user, not as root.
+run_bootstrap() { env PATH="$STUB:$PATH" CLAUDE_CONFIG_DIR="$T" "$@" \
     /usr/local/share/claude-feature/bootstrap.sh > /tmp/boot.log 2>&1; }
 
 # First run on an empty volume: every staged server is added.
@@ -159,18 +162,16 @@ check "backup is mode 600" bash -c \
 check "unstaged servers are untouched" bash -c \
     'jq --arg n mine ".mcpServers[\$n] = {\"command\":\"x\"}" /tmp/reconcile-home/.claude.json > /tmp/y && mv /tmp/y /tmp/reconcile-home/.claude.json; PATH=/tmp/mcpstub:$PATH CLAUDE_CONFIG_DIR=/tmp/reconcile-home /usr/local/share/claude-feature/bootstrap.sh > /dev/null 2>&1; jq -e ".mcpServers.mine.command == \"x\"" /tmp/reconcile-home/.claude.json > /dev/null'
 
-# reconcileMcp=false: drift is reported and left in place. Asserted here by
-# swapping the staged file; the mcp_reconcile_off scenario covers install.sh.
-cp /usr/local/share/claude-feature/bootstrap.env /tmp/bootstrap.env.bak
-echo 'RECONCILE_MCP=false' > /usr/local/share/claude-feature/bootstrap.env
+# reconcileMcp=false: drift is reported and left in place. The env override is
+# what makes this assertable as a non-root user; the mcp_reconcile_off scenario
+# covers the staged-file half, which is install.sh's job.
 jq '.mcpServers.github = {"type":"http","url":"https://api.githubcopilot.com/mcp/"}' \
     "$T/.claude.json" > "$T/x" && mv "$T/x" "$T/.claude.json"
-run_bootstrap
+run_bootstrap RECONCILE_MCP=false
 check "reconcileMcp=false leaves drift in place" bash -c \
     'jq -e ".mcpServers.github | has(\"headers\") | not" /tmp/reconcile-home/.claude.json > /dev/null'
 check "reconcileMcp=false says so" bash -c "grep -q 'reconcileMcp=false' /tmp/boot.log"
-cp /tmp/bootstrap.env.bak /usr/local/share/claude-feature/bootstrap.env
-rm -rf "$T" "$STUB" /tmp/boot.log /tmp/bootstrap.env.bak
+rm -rf "$T" "$STUB" /tmp/boot.log
 
 # The CLI arrives via dependsOn; report rather than fail, so a registry hiccup
 # fetching that feature does not read as a bug in this one.
