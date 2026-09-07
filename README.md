@@ -100,7 +100,7 @@ you between projects.
 |---|---|---|
 | auth, MCP servers, skills, chat history | volume `claude-config` → `/home/vscode/.claude` | `mounts` + `CLAUDE_CONFIG_DIR` |
 | per-project chat history | `~/.claude/projects/-workspaces-<repo>/` | keyed by container path, so projects stay separate |
-| MCP servers | user scope | `bootstrap.sh` replays `mcp-servers.json` on create |
+| MCP servers | user scope | `bootstrap.sh` reconciles `mcp-servers.json` on create |
 | GitHub / W&B / Zotero keys | `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600` | in the volume, referenced as `${VAR}` |
 | …reaching Claude and MCP | `env` block of `settings.json` | generated from `secrets.env` by `bootstrap.sh` |
 | …reaching plain terminals | `/etc/profile.d/10-claude-secrets.sh` | exports an **allowlist** (`shellVars`, default `WANDB_API_KEY`) from the same file; also hooked into `bash.bashrc` / `zshrc` |
@@ -111,7 +111,7 @@ you between projects.
 > [!WARNING]
 >Key safety
 >
->- All keys live only in `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600`, inside the volume. Never in a repository, never in git.
+>- All keys live only in `$CLAUDE_CONFIG_DIR/secrets.env`, mode `600`, inside the volume. Never in a repository, never in git. Make sure to use READ-ONLY Keys where possible/sufficient.
 > - OAuth is not available for any of these. `api.githubcopilot.com/mcp/` has no dynamic client registration, which `claude mcp login` requires, so use a **fine-grained PAT with an expiry** and only the repos Claude needs.
 > - Deny rules stop Claude's *file tools* from opening credential files. They do **not** remove values from the process environment, where any subprocess can read them.
 > - So the things that actually matter: minimum-scope tokens, and rotate anything that has been printed.

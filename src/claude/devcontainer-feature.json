@@ -1,13 +1,18 @@
 {
     "name": "Claude Code workspace",
     "id": "claude",
-    "version": "1.1.0",
-    "description": "Persists Claude Code's state in a named volume so auth, MCP servers and per-project chat history survive a rebuild, replays a versioned set of MCP servers into user scope, and installs machine-wide deny rules that keep the agent out of secret files.",
+    "version": "1.2.0",
+    "description": "Persists Claude Code's state in a named volume so auth, MCP servers and per-project chat history survive a rebuild, reconciles a versioned set of MCP servers into user scope on every create, and installs machine-wide deny rules that keep the agent out of secret files.",
     "options": {
         "mcpServers": {
             "type": "boolean",
             "default": true,
-            "description": "On container create, replay the MCP server definitions bundled with this feature into user scope. Existing servers of the same name are left untouched."
+            "description": "On container create, replay the MCP server definitions bundled with this feature into user scope. Servers that are missing are added; servers whose live entry no longer matches the bundled definition are reconciled, unless reconcileMcp is false."
+        },
+        "reconcileMcp": {
+            "type": "boolean",
+            "default": true,
+            "description": "When a server's live entry differs from the definition bundled with this Feature, replace it so a corrected definition actually reaches containers whose config volume still holds the old one. The previous entry is saved under $CLAUDE_CONFIG_DIR/mcp-backups/ first. Set false to keep local edits and only ever add missing servers."
         },
         "denyRules": {
             "type": "boolean",
@@ -17,7 +22,7 @@
         "shellVars": {
             "type": "string",
             "default": "WANDB_API_KEY",
-            "description": "Comma- or space-separated names from secrets.env to export into interactive shells — only those a command you type actually needs, such as WANDB_API_KEY for `wandb sync` and training runs. Everything else in the file still reaches Claude Code and its MCP servers through the env block of settings.json, and is deliberately kept out of every shell's environment. Empty exports nothing."
+            "description": "Comma- or space-separated names from secrets.env to export into interactive shells \u2014 only those a command you type actually needs, such as WANDB_API_KEY for `wandb sync` and training runs. Everything else in the file still reaches Claude Code and its MCP servers through the env block of settings.json, and is deliberately kept out of every shell's environment. Empty exports nothing."
         }
     },
     "mounts": [

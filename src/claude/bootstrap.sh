@@ -8,6 +8,7 @@ CONFIG_DIR="${CLAUDE_CONFIG_DIR:-/home/vscode/.claude}"
 DEFS="/usr/local/share/claude-feature/mcp-servers.json"
 SECRETS="$CONFIG_DIR/secrets.env"
 SETTINGS="$CONFIG_DIR/settings.json"
+RECONCILE_CONF="/usr/local/share/claude-feature/bootstrap.env"
 
 # Nothing staged (mcpServers=false at build time) is not an error.
 [ -f "$DEFS" ] || exit 0
@@ -58,21 +59,67 @@ if ! command -v claude > /dev/null 2>&1; then
     exit 0
 fi
 
+# User-scope servers live in .claude.json inside the config dir, which is the
+# volume. Read them straight from the file: `claude mcp get` prints prose, so
+# there is nothing there to compare a definition against.
+USER_CONFIG="$CONFIG_DIR/.claude.json"
+[ -s "$USER_CONFIG" ] || USER_CONFIG="${HOME:-/home/vscode}/.claude.json"
+BACKUP_DIR="$CONFIG_DIR/mcp-backups"
+
+# Staged by install.sh, which is where Feature options are visible; postCreate
+# runs with none of them in its environment.
+[ -r "$RECONCILE_CONF" ] && . "$RECONCILE_CONF"
+
 echo "Bootstrapping MCP servers at user scope"
 newly_added=""
 
 while read -r name; do
     [ -n "$name" ] || continue
-    if claude mcp get "$name" > /dev/null 2>&1; then
-        echo "  '$name' already configured — left as is"
+    definition="$(jq -c --arg n "$name" '.mcpServers[$n]' "$DEFS")"
+
+    live=""
+    if [ -s "$USER_CONFIG" ]; then
+        live="$(jq -c --arg n "$name" '.mcpServers[$n] // empty' "$USER_CONFIG" 2> /dev/null)"
+    fi
+
+    # Not present at all: a plain first-run add.
+    if [ -z "$live" ]; then
+        if claude mcp add-json "$name" "$definition" -s user > /dev/null 2>&1; then
+            echo "  '$name' added"
+            newly_added="$newly_added $name"
+        else
+            echo "  WARNING: could not add '$name'" >&2
+        fi
         continue
     fi
-    definition="$(jq -c --arg n "$name" '.mcpServers[$n]' "$DEFS")"
+
+    # Present. Compare canonically — key order and whitespace are not drift.
+    if [ "$(printf '%s' "$live" | jq -S -c . 2> /dev/null)" \
+       = "$(printf '%s' "$definition" | jq -S -c . 2> /dev/null)" ]; then
+        echo "  '$name' already up to date"
+        continue
+    fi
+
+    # Present but different. Matching on the name alone and skipping here is what
+    # stranded the OAuth-era github entry: the definition was corrected in this
+    # Feature, every container already had the name, and the fix could never land.
+    # The staged definition is the source of truth, so drift is reconciled — but
+    # the old entry is kept, because it may be a deliberate local edit.
+    if [ "${RECONCILE_MCP:-true}" != "true" ]; then
+        echo "  '$name' differs from the staged definition — left as is (reconcileMcp=false)"
+        continue
+    fi
+
+    mkdir -p "$BACKUP_DIR"
+    backup="$BACKUP_DIR/$name.$(date -u +%Y%m%dT%H%M%SZ).json"
+    printf '%s\n' "$live" > "$backup"
+    chmod 600 "$backup"
+
+    claude mcp remove "$name" -s user > /dev/null 2>&1
     if claude mcp add-json "$name" "$definition" -s user > /dev/null 2>&1; then
-        echo "  '$name' added"
-        newly_added="$newly_added $name"
+        echo "  '$name' reconciled with the staged definition (previous entry: $backup)"
     else
-        echo "  WARNING: could not add '$name'" >&2
+        echo "  WARNING: could not reconcile '$name' — previous entry saved at $backup" >&2
     fi
 done < <(jq -r '.mcpServers | keys[]' "$DEFS")
 

@@ -96,6 +96,82 @@ CLAUDE_CONFIG_DIR=/home/vscode/.claude /usr/local/share/claude-feature/bootstrap
 check "existing settings keys preserved" bash -c \
     "jq -e '.model == \"opus\" and .env.WANDB_API_KEY == \"abc123\"' /home/vscode/.claude/settings.json > /dev/null"
 
+# --- MCP reconcile ------------------------------------------------------------
+# Options are only visible to install.sh, so bootstrap.sh reads them from here.
+check "bootstrap.env staged" test -f /usr/local/share/claude-feature/bootstrap.env
+check "reconcile defaults to on" bash -c \
+    "grep -q '^RECONCILE_MCP=true$' /usr/local/share/claude-feature/bootstrap.env"
+
+# A stand-in for `claude mcp`, writing the same file the real CLI writes. The real
+# one only arrives via dependsOn, and these assertions are about bootstrap's own
+# add/reconcile decisions, not about the CLI.
+STUB=/tmp/mcpstub
+mkdir -p "$STUB"
+cat > "$STUB/claude" <<'STUBEOF'
+#!/bin/bash
+cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.claude.json"
+[ -s "$cfg" ] || echo '{}' > "$cfg"
+case "$2" in
+    add-json) jq --arg n "$3" --argjson d "$4" '.mcpServers[$n] = $d' "$cfg" > "$cfg.t" && mv "$cfg.t" "$cfg" ;;
+    remove)   jq --arg n "$3" 'del(.mcpServers[$n])' "$cfg" > "$cfg.t" && mv "$cfg.t" "$cfg" ;;
+    get)      jq -e --arg n "$3" '.mcpServers[$n]' "$cfg" > /dev/null ;;
+    *)        exit 0 ;;
+esac
+STUBEOF
+chmod +x "$STUB/claude"
+
+# An isolated config dir: these tests rewrite .claude.json, and the assertions
+# above are about the real one.
+T=/tmp/reconcile-home
+rm -rf "$T"; mkdir -p "$T"
+run_bootstrap() { PATH="$STUB:$PATH" CLAUDE_CONFIG_DIR="$T" \
+    /usr/local/share/claude-feature/bootstrap.sh > /tmp/boot.log 2>&1; }
+
+# First run on an empty volume: every staged server is added.
+run_bootstrap
+check "fresh run adds every staged server" bash -c \
+    'a=$(jq -r ".mcpServers | keys | length" /tmp/reconcile-home/.claude.json); b=$(jq -r ".mcpServers | keys | length" /usr/local/share/claude-feature/mcp-servers.json); [ "$a" = "$b" ]'
+check "fresh run reports an add" bash -c "grep -q \"'github' added\" /tmp/boot.log"
+
+# Second run, nothing changed: no churn and no backups.
+run_bootstrap
+check "unchanged servers are left alone" bash -c \
+    "grep -q \"'github' already up to date\" /tmp/boot.log"
+check "no backup written when nothing drifted" bash -c \
+    "! test -d /tmp/reconcile-home/mcp-backups"
+
+# The regression this guards: the OAuth-era github entry, correct definition
+# staged, name already present. Skipping on the name alone stranded it forever.
+jq '.mcpServers.github = {"type":"http","url":"https://api.githubcopilot.com/mcp/"}' \
+    "$T/.claude.json" > "$T/x" && mv "$T/x" "$T/.claude.json"
+run_bootstrap
+check "a drifted server is reconciled" bash -c \
+    'jq -e ".mcpServers.github.headers.Authorization == \"Bearer \${GITHUB_PERSONAL_ACCESS_TOKEN}\"" /tmp/reconcile-home/.claude.json > /dev/null'
+check "reconcile is reported" bash -c "grep -q \"'github' reconciled\" /tmp/boot.log"
+# Drift may be a deliberate local edit, so the old entry is kept, not discarded.
+check "previous entry backed up" bash -c \
+    'ls /tmp/reconcile-home/mcp-backups/github.*.json > /dev/null 2>&1'
+check "backup holds the entry that was replaced" bash -c \
+    'jq -e "has(\"headers\") | not" $(ls /tmp/reconcile-home/mcp-backups/github.*.json | head -1) > /dev/null'
+check "backup is mode 600" bash -c \
+    '[ "$(stat -c %a $(ls /tmp/reconcile-home/mcp-backups/github.*.json | head -1))" = 600 ]'
+# Servers the user added by hand are none of this Feature's business.
+check "unstaged servers are untouched" bash -c \
+    'jq --arg n mine ".mcpServers[\$n] = {\"command\":\"x\"}" /tmp/reconcile-home/.claude.json > /tmp/y && mv /tmp/y /tmp/reconcile-home/.claude.json; PATH=/tmp/mcpstub:$PATH CLAUDE_CONFIG_DIR=/tmp/reconcile-home /usr/local/share/claude-feature/bootstrap.sh > /dev/null 2>&1; jq -e ".mcpServers.mine.command == \"x\"" /tmp/reconcile-home/.claude.json > /dev/null'
+
+# reconcileMcp=false: drift is reported and left in place. Asserted here by
+# swapping the staged file; the mcp_reconcile_off scenario covers install.sh.
+cp /usr/local/share/claude-feature/bootstrap.env /tmp/bootstrap.env.bak
+echo 'RECONCILE_MCP=false' > /usr/local/share/claude-feature/bootstrap.env
+jq '.mcpServers.github = {"type":"http","url":"https://api.githubcopilot.com/mcp/"}' \
+    "$T/.claude.json" > "$T/x" && mv "$T/x" "$T/.claude.json"
+run_bootstrap
+check "reconcileMcp=false leaves drift in place" bash -c \
+    'jq -e ".mcpServers.github | has(\"headers\") | not" /tmp/reconcile-home/.claude.json > /dev/null'
+check "reconcileMcp=false says so" bash -c "grep -q 'reconcileMcp=false' /tmp/boot.log"
+cp /tmp/bootstrap.env.bak /usr/local/share/claude-feature/bootstrap.env
+rm -rf "$T" "$STUB" /tmp/boot.log /tmp/bootstrap.env.bak
+
 # The CLI arrives via dependsOn; report rather than fail, so a registry hiccup
 # fetching that feature does not read as a bug in this one.
 if command -v claude > /dev/null 2>&1; then

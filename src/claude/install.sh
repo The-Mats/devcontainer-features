@@ -135,6 +135,16 @@ else
     echo "  mcpServers=false — no definitions staged"
 fi
 
+# Feature options are visible here, at build time, and nowhere else: the
+# postCreateCommand runs with none of them in its environment. Stage the ones
+# bootstrap.sh needs as a file it can source.
+cat > "$SHARE_DIR/bootstrap.env" <<EOF
+# Written by install.sh from this Feature's options. Sourced by bootstrap.sh.
+RECONCILE_MCP=${RECONCILEMCP:-true}
+EOF
+chmod 0644 "$SHARE_DIR/bootstrap.env"
+echo "  reconcileMcp: ${RECONCILEMCP:-true}"
+
 # Always installed: postCreateCommand names it unconditionally, and it exits
 # quietly when there is nothing staged to replay.
 cp "$(dirname "$0")/bootstrap.sh" "$SHARE_DIR/bootstrap.sh"

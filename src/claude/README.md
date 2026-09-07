@@ -1,7 +1,6 @@
-
 # Claude Code workspace (claude)
 
-Persists Claude Code's state in a named volume so auth, MCP servers and per-project chat history survive a rebuild, replays a versioned set of MCP servers into user scope, and installs machine-wide deny rules that keep the agent out of secret files.
+Persists Claude Code's state in a named volume so auth, MCP servers and per-project chat history survive a rebuild, reconciles a versioned set of MCP servers into user scope on every create, and installs machine-wide deny rules that keep the agent out of secret files.
 
 ## Example Usage
 
@@ -15,7 +14,8 @@ Persists Claude Code's state in a named volume so auth, MCP servers and per-proj
 
 | Options Id | Description | Type | Default Value |
 |-----|-----|-----|-----|
-| mcpServers | On container create, replay the MCP server definitions bundled with this feature into user scope. Existing servers of the same name are left untouched. | boolean | true |
+| mcpServers | On container create, replay the MCP server definitions bundled with this feature into user scope. Servers that are missing are added; servers whose live entry no longer matches the bundled definition are reconciled, unless reconcileMcp is false. | boolean | true |
+| reconcileMcp | When a server's live entry differs from the definition bundled with this Feature, replace it so a corrected definition actually reaches containers whose config volume still holds the old one. The previous entry is saved under $CLAUDE_CONFIG_DIR/mcp-backups/ first. Set false to keep local edits and only ever add missing servers. | boolean | true |
 | denyRules | Install /etc/claude-code/managed-settings.json with deny rules for secret files. Managed settings sit above user and project settings, so no repository can weaken them. | boolean | true |
 | shellVars | Comma- or space-separated names from secrets.env to export into interactive shells — only those a command you type actually needs, such as WANDB_API_KEY for `wandb sync` and training runs. Everything else in the file still reaches Claude Code and its MCP servers through the env block of settings.json, and is deliberately kept out of every shell's environment. Empty exports nothing. | string | WANDB_API_KEY |
 
@@ -42,9 +42,10 @@ project. Swap it for `${devcontainerId}` if you would rather each project be sep
 
 ### 2. MCP servers, versioned, with no keys committed
 
-`mcp-servers.json` ships with the feature and is replayed into **user** scope on
-container create. A server that already exists is left alone, so the bootstrap is safe
-on every rebuild and safe against an existing volume.
+`mcp-servers.json` ships with the feature and is reconciled into **user** scope on
+container create. A missing server is added; a server whose live entry no longer matches
+the bundled definition is replaced, with the old entry saved under
+`$CLAUDE_CONFIG_DIR/mcp-backups/`.
 
 All three authenticate with a `${VAR}` reference. OAuth is not an option for any of
 them today: `api.githubcopilot.com/mcp/` does not support dynamic client registration,
@@ -129,6 +130,36 @@ chmod 600 "$CLAUDE_CONFIG_DIR/secrets.env"
 
 Editing `secrets.env` later needs that same last step — or a rebuild — to pick it up.
 On a genuinely new machine the volume starts empty, so also `claude login` once.
+
+## Upgrading containers to a new version of this feature
+
+The config volume is deliberately long-lived, so an upgrade has to cross it rather than
+replace it. Nothing here asks you to throw state away: chat history, `secrets.env` and
+`.credentials.json` all live in `claude-config` and are never rewritten by an upgrade.
+
+1. Bump `version` in `devcontainer-feature.json` and merge to `main`.
+2. Run the **Release dev container features** workflow, which publishes the new version
+   to `ghcr.io/the-mats/devcontainer-features/claude`.
+3. In each project: **Dev Containers: Rebuild Container**.
+
+Pin the major (`claude:1`) and step 3 is the whole upgrade. A `devcontainer-lock.json`
+pins a digest, so refresh it (`devcontainer upgrade --workspace-folder .`, or delete the
+file) when a rebuild keeps landing on the old version.
+
+Two things upgrade by different routes, which is worth knowing when only half a change
+appears to take:
+
+| Changed | Reaches the container via | Needs |
+|---|---|---|
+| `install.sh`, deny rules, shell allowlist | image layer | a rebuild |
+| `mcp-servers.json`, `bootstrap.sh` | postCreate, against the volume | a rebuild, or just re-run `/usr/local/share/claude-feature/bootstrap.sh` |
+
+That second row is why an MCP definition change does not need a rebuild at all — running
+`bootstrap.sh` by hand reconciles the live config immediately.
+
+Because the volume name is fixed rather than `${devcontainerId}`, every container on the
+machine shares one config. Reconciling in any one of them fixes the shared MCP entries
+for all of them; the per-project chat histories stay separate regardless.
 
 ## Assumptions
 

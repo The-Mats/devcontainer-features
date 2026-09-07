@@ -24,5 +24,13 @@
                 "shellVars": "WANDB_API_KEY,EXTRA_TOKEN"
             }
         }
+    },
+    "mcp_reconcile_off": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "claude": {
+                "reconcileMcp": false
+            }
+        }
     }
 }
